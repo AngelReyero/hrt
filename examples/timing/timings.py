@@ -3,7 +3,7 @@ Set of benchmarks for different holdout randomization testing algorithms.
 '''
 import numpy as np
 import time
-from scipy.stats import norm
+from scipy.stats import norm, binom
 from collections import defaultdict
 
 
@@ -20,12 +20,13 @@ def bh(p, fdr):
     return np.array(discoveries)
 
 class DataGeneratingModel:
-    def __init__(self, N, P, signals, sigma=1, nfactors=5):
+    def __init__(self, N, P, sigma=1, nfactors=5, response_structure='tanh', nsignals = 3):
         self.N = N
         self.P = P
-        self.signals = signals
         self.sigma = sigma
         self.nfactors = nfactors
+        self.response_structure=response_structure
+        self.nsignals = nsignals
         self.covariates()
         self.response()
 
@@ -37,16 +38,24 @@ class DataGeneratingModel:
 
     def response(self):
         # Nonlinear model in a few covariates
-        self.y = np.tanh(self.X[:,0]) * self.signals[0] + \
-                 5*np.tanh(self.X[:,1] * self.signals[1] + self.X[:,2] * self.signals[2]) + \
-                 np.random.normal(0, self.sigma, size=self.X.shape[0])
-        
-        # Use a simple linear model
-        # self.y = self.X[:,:len(self.signals)].dot(self.signals)
+        if self.response_structure=='tanh':
+            self.signals = np.array([0.1,0.1,0.1])
+            self.y = np.tanh(self.X[:,0]) * self.signals[0] + \
+                    5*np.tanh(self.X[:,1] * self.signals[1] + self.X[:,2] * self.signals[2]) + \
+                    np.random.normal(0, self.sigma, size=self.X.shape[0])
+            self.nsignals = 3
+
+        elif self.response_structure=='linear':
+            self.signals = np.zeros(N)
+            self.signals[:self.nsignals] = np.random.choice([-3, -2, -1, 1, 2, 3], size=self.nsignals)
+            self.y = self.X[:,:len(self.signals)].dot(self.signals)
+
 
     def conditional_samples(self, rows, idx, nsamples=1):
         # Sample from the complete conditional distribution
-        return np.squeeze(np.random.normal(self.Z[rows].dot(self.W[idx]), self.sigma, size=(len(rows), nsamples)))
+        #print(self.Z[rows].dot(self.W[idx]).reshape(-1, 1))
+        #print(np.random.normal(self.Z[rows].dot(self.W[idx]).reshape(-1, 1), self.sigma, size=(len(rows), nsamples)))
+        return np.squeeze(np.random.normal(self.Z[rows].dot(self.W[idx]).reshape(-1, 1), self.sigma, size=(len(rows), nsamples)))
 
     def conditional_grid(self, rows, idx, ngrid, tol=1e-8):
         # Conditional mean for each sample in rows
@@ -97,6 +106,58 @@ def fit_rf(X, y):
     rf.fit(X,y)
     return rf
 
+def fit_xgboost(X, y):
+    ''' Fit a gradient boosted trees model using XGBoost  '''
+    import xgboost as xgb
+
+    model = xgb.XGBRegressor(
+        objective='reg:squarederror',
+        n_estimators=100,
+        max_depth=6,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        random_state=42
+    )
+
+    model.fit(X, y, verbose=False)
+    return model
+
+def fit_fast_xgboost(X, y):
+    ''' Fit a lightweight and fast XGBoost regressor '''
+    import xgboost as xgb
+
+    model = xgb.XGBRegressor(
+        objective='reg:squarederror',
+        n_estimators=20,          # fewer trees
+        max_depth=3,              # shallower trees
+        learning_rate=0.2,        # faster convergence
+        subsample=1.0,
+        colsample_bytree=1.0,
+        tree_method='auto',       # can try 'exact' if your data is small
+        verbosity=0,
+        random_state=42
+    )
+
+    model.fit(X, y)
+    return model
+
+def fit_tabpfn(X, y):
+    ''' Fit a TabPFN regressor on the full dataset '''
+    from tabpfn import TabPFNRegressor
+
+    # Convert to NumPy arrays with correct types
+    X = np.asarray(X, dtype=np.float32)
+    y = np.asarray(y, dtype=np.float32)
+
+    # Initialize model
+    model = TabPFNRegressor()
+
+    # Fit on full data
+    model.fit(X, y)
+
+    return model
+
 class OLS:
     def __init__(self):
         pass
@@ -111,6 +172,26 @@ def fit_ols(X, y):
     ols = OLS()
     ols.fit(X, y)
     return ols
+
+def fit_keras_nn(X, y):
+    ''' Fit a simple neural network using Keras  '''
+    from tensorflow.keras.models import Sequential
+    from tensorflow.keras.layers import Dense
+    from tensorflow.keras.optimizers import Adam
+
+    X = np.asarray(X)
+    y = np.asarray(y)
+
+    model = Sequential([
+        Dense(64, activation='relu', input_shape=(X.shape[1],)),
+        Dense(64, activation='relu'),
+        Dense(1)
+    ])
+
+    model.compile(optimizer=Adam(0.001), loss='mse')
+    model.fit(X, y, epochs=50, batch_size=32, verbose=0)
+
+    return model
 
 def create_train_test(X, test_fold):
     # Split the data into train/test
@@ -248,6 +329,121 @@ def basic_hrt(dgm, idx, fit_fn, test_fold=0.2, ntrials=1000, **kwargs):
     # Return the one-sided p-value
     return (1+p_value) / (1+ntrials)
 
+
+def basic_binom_hrt(dgm, idx, fit_fn, test_fold=0.2, ntrials=1, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Get the train and test indices
+    train_fold, test_fold = create_train_test(X, test_fold)
+    X_train, y_train = X[train_fold], y[train_fold]
+    X_test, y_test = X[test_fold], y[test_fold]
+
+    # Get the test MSE
+    model = fit_fn(X_train, y_train)
+    pred = model.predict(X_test)
+    loss_difference = -((y_test - pred)**2)
+    for trial in range(ntrials):
+        # Sample a null column for the target feature
+        X_test[:,idx] = dgm.conditional_samples(test_fold, idx)
+
+        # Get the null test MSE
+        pred = model.predict(X_test)
+        loss_difference += ((y_test - pred)**2)/ntrials
+
+    binom_stat=(loss_difference>0).sum()
+    # Return the one-sided p-value
+    return binom.sf(binom_stat-1, y_test.shape[0], 0.5)
+
+
+def invalid_binom_hrt(dgm, idx, fit_fn, test_fold=0.2, ntrials=1, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Get the train and test indices
+    train_fold, test_fold = create_train_test(X, test_fold)
+    X_train, y_train = X[train_fold], y[train_fold]
+    X_test, y_test = X[test_fold], y[test_fold]
+
+    # Get the test MSE
+    model = fit_fn(X_train, y_train)
+    pred = model.predict(X_test)
+    true_loss = ((y_test - pred)**2)
+    binom_stat=0
+    for trial in range(ntrials):
+        # Sample a null column for the target feature
+        X_test[:,idx] = dgm.conditional_samples(test_fold, idx)
+
+        # Get the null test MSE
+        pred = model.predict(X_test)
+        binom_stat += (((y_test - pred)**2-true_loss)>0).sum()
+
+
+    # Return the one-sided p-value
+    return binom.sf(binom_stat-1, ntrials*y_test.shape[0], 0.5)
+
+def basic_cpi(dgm, idx, fit_fn, test_fold=0.2, ntrials=100, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Get the train and test indices
+    train_fold, test_fold = create_train_test(X, test_fold)
+    X_train, y_train = X[train_fold], y[train_fold]
+    X_test, y_test = X[test_fold], y[test_fold]
+
+    # Get the test MSE
+    model = fit_fn(X_train, y_train)
+    pred = model.predict(X_test)
+    t_true = ((y_test - pred)**2).sum()
+
+    # Run the basic HRT that avoids refitting on the test set
+    cpi = []
+    for trial in range(ntrials):
+        # Sample a null column for the target feature
+        X_test[:,idx] = dgm.conditional_samples(test_fold, idx)
+
+        # Get the null test MSE
+        pred = model.predict(X_test)
+        t_null = ((y_test - pred)**2).sum()
+        cpi.append(t_null-t_true)
+
+    cpi=np.array(cpi)
+    # Return the one-sided p-value
+    return norm.sf(np.mean(cpi)/(np.std(cpi)+np.var(y_test)/np.sqrt(y_test.shape[0])))
+
+def invalid_cpi(dgm, idx, fit_fn, test_fold=0.2, ntrials=100, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Get the train and test indices
+    train_fold, test_fold = create_train_test(X, test_fold)
+    X_train, y_train = X[train_fold], y[train_fold]
+    X_test, y_test = X[test_fold], y[test_fold]
+
+    # Get the test MSE
+    model = fit_fn(X_train, y_train)
+    pred = model.predict(X_test)
+    t_true = ((y_test - pred)**2).sum()
+
+    # Run the basic HRT that avoids refitting on the test set
+    cpi = []
+    for trial in range(ntrials):
+        # Sample a null column for the target feature
+        X_test[:,idx] = dgm.conditional_samples(test_fold, idx)
+
+        # Get the null test MSE
+        pred = model.predict(X_test)
+        t_null = ((y_test - pred)**2).sum()
+        cpi.append(t_null-t_true)
+
+    cpi=np.array(cpi)
+    # Return the one-sided p-value
+    return norm.sf(np.mean(cpi)/(np.std(cpi)+10e-6))
+
 def fisher(p_values, axis=None):
     '''Implements Fisher's method for combining p-values.'''
     from scipy.stats import chi2
@@ -345,6 +541,116 @@ def invalid_cv_hrt(dgm, idx, fit_fn, folds=5, ntrials=1000, **kwargs):
 
     # Return the one-sided p-value
     return (1+(t_true >= t_null).sum()) / (1+ntrials)
+
+def valid_cv_cpi(dgm, idx, fit_fn, folds=5, ntrials=1000, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Split the data into folds (if they are not already provided)
+    if isinstance(folds, int):
+        folds = create_folds(X, folds)
+
+    # Build separate p-values for each CV fold
+    cpi = []
+    for fold_idx, fold in enumerate(folds):
+        # Split into train and test for this fold
+        mask = np.ones(X.shape[0], dtype=bool)
+        mask[fold] = False
+        X_train, y_train = X[mask], y[mask]
+        X_test, y_test = X[fold], y[fold]
+
+        # Get the true MSE on the held out fold
+        model = fit_fn(X_train, y_train)
+        pred = model.predict(X_test)
+        t_true = ((y_test - pred)**2).sum()
+
+        # Calculate the fold-specific p-value
+        X_test_cv = np.copy(X_test)
+        for trial in range(ntrials):
+            # Sample a null column for the target feature
+            X_test_cv[:,idx] = dgm.conditional_samples(fold, idx)
+            
+            # Get the null test MSE
+            pred = model.predict(X_test_cv)
+            cpi.append(((y_test - pred)**2).sum()-t_true) 
+
+    cpi = np.array(cpi)
+    # Return the one-sided p-value
+    return norm.sf(np.mean(cpi)/(np.std(cpi)+np.var(y)/np.sqrt(y.shape[0])))
+
+def invalid_cv_cpi(dgm, idx, fit_fn, folds=5, ntrials=1000, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Split the data into folds (if they are not already provided)
+    if isinstance(folds, int):
+        folds = create_folds(X, folds)
+
+    # Build separate p-values for each CV fold
+    cpi = []
+    for fold_idx, fold in enumerate(folds):
+        # Split into train and test for this fold
+        mask = np.ones(X.shape[0], dtype=bool)
+        mask[fold] = False
+        X_train, y_train = X[mask], y[mask]
+        X_test, y_test = X[fold], y[fold]
+
+        # Get the true MSE on the held out fold
+        model = fit_fn(X_train, y_train)
+        pred = model.predict(X_test)
+        t_true = ((y_test - pred)**2).sum()
+
+        # Calculate the fold-specific p-value
+        X_test_cv = np.copy(X_test)
+        for trial in range(ntrials):
+            # Sample a null column for the target feature
+            X_test_cv[:,idx] = dgm.conditional_samples(fold, idx)
+            
+            # Get the null test MSE
+            pred = model.predict(X_test_cv)
+            cpi.append(((y_test - pred)**2).sum()-t_true) 
+
+    cpi = np.array(cpi)
+    # Return the one-sided p-value
+    return norm.sf(np.mean(cpi)/(np.std(cpi)+10e-6))
+
+def invalid_cv_binom_hrt(dgm, idx, fit_fn, folds=5, ntrials=1000, **kwargs):
+    # Do not modify the original X
+    X = np.copy(dgm.X)
+    y = np.copy(dgm.y)
+
+    # Split the data into folds (if they are not already provided)
+    if isinstance(folds, int):
+        folds = create_folds(X, folds)
+
+    binom_stat = 0
+    for fold_idx, fold in enumerate(folds):
+        # Split into train and test for this fold
+        mask = np.ones(X.shape[0], dtype=bool)
+        mask[fold] = False
+        X_train, y_train = X[mask], y[mask]
+        X_test, y_test = X[fold], y[fold]
+
+        # Get the true MSE on the held out fold
+        model = fit_fn(X_train, y_train)
+        pred = model.predict(X_test)
+
+        loss_difference = -((y_test - pred)**2)
+        X_test_cv = np.copy(X_test)
+        for trial in range(ntrials):
+            # Sample a null column for the target feature
+            X_test_cv[:,idx] = dgm.conditional_samples(fold, idx)
+
+            # Get the null test MSE
+            pred = model.predict(X_test_cv)
+            loss_difference += ((y_test - pred)**2)/ntrials
+
+        binom_stat += (loss_difference>0).sum()
+        # Return the one-sided p-value
+    return binom.sf(binom_stat-1, y.shape[0], 0.5)
+
 
 def grid_predictions(X, grid, idx, model):
     X_grid = np.repeat(X, grid.shape[1], axis=0)
@@ -522,14 +828,13 @@ def cv_hpt(dgm, idx, fit_fn, folds=5, ntrials=1000, **kwargs):
 
 
 if __name__ == '__main__':
-    # 100 samples, 10 covariates, 4 non-null, repeat 100 indepent times, with error rate alpha
-    N = 20
-    P = 10
+    # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
+    N = 500
+    P = 100
     nsamples = 10000
-    nruns = 500
+    ntested = 10
+    nruns = 5
     alpha = 0.05
-    signals = np.array([0.1,0.1,0.1])
-    nsignals = len(signals)
     nfolds = 5
     nfactors = 5
     sigma = 1
@@ -544,15 +849,18 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn = fit_ols #[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf]
-
+    fit_fn =  fit_ols#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
+    model = 'ols'
     testers = [#'Naive CRT', 'Naive CV-CRT',
                'Basic HRT', #'CV-HRT', #'Invalid CV-HRT',
                'Basic HGT', #'CV-HGT',
                'Basic HPT', #'CV-HPT',
+               'Basic Binom_CRT',
+               'Basic CPI',
+               'Invalid CPI'
                ]
     ntesters = len(testers)
-    ntested = 2*nsignals
+   
 
     p_values = np.zeros((nruns, ntested, ntesters))
     timings = np.zeros_like(p_values)
@@ -560,7 +868,7 @@ if __name__ == '__main__':
         print('Trial {}'.format(run+1))
 
         # Generate the data
-        dgm = DataGeneratingModel(N, P, signals, sigma=sigma, nfactors=nfactors)
+        dgm = DataGeneratingModel(N, P, sigma=sigma, nfactors=nfactors)
 
         # Split the data into folds (share folds between tests for consistency)
         folds = create_folds(dgm.X, nfolds)
@@ -616,7 +924,24 @@ if __name__ == '__main__':
             timings[run, signal_idx, method_idx] = end - start
             method_idx += 1
 
+            start = time.time()
+            p_values[run, signal_idx, method_idx] = basic_binom_hrt(dgm, signal_idx, fit_fn, test_fold=folds[0], ntrials=10)
+            end = time.time()
+            timings[run, signal_idx, method_idx] = end - start
+            method_idx += 1
 
+            start = time.time()
+            p_values[run, signal_idx, method_idx] = basic_cpi(dgm, signal_idx, fit_fn, test_fold=folds[0], ntrials=100)
+            end = time.time()
+            timings[run, signal_idx, method_idx] = end - start
+            method_idx += 1
+
+            start = time.time()
+            p_values[run, signal_idx, method_idx] = invalid_cpi(dgm, signal_idx, fit_fn, test_fold=folds[0], ntrials=100)
+            end = time.time()
+            timings[run, signal_idx, method_idx] = end - start
+            method_idx += 1
+            
             print(timings[run, signal_idx], '\t\t', p_values[run, signal_idx])
             print()
         print()
@@ -644,7 +969,7 @@ if __name__ == '__main__':
     fig.subplots_adjust(right=0.65)   
 
     # plt.legend(loc='lower right', ncol=2)
-    plt.savefig('plots/example-{}folds.pdf'.format(nfolds), bbox_inches='tight')
+    plt.savefig(f'plots/example-N{N}_p{P}_{model}_basics.pdf', bbox_inches='tight')
     plt.close()
 
     grid = np.linspace(0,0.05,1000)
@@ -661,7 +986,7 @@ if __name__ == '__main__':
     fig.subplots_adjust(right=0.65)   
 
     # plt.legend(loc='lower right', ncol=2)
-    plt.savefig('plots/example-zoomed-{}folds.pdf'.format(nfolds), bbox_inches='tight')
+    plt.savefig(f'plots/example-zoomed-N{N}_p{P}_{model}_basics.pdf', bbox_inches='tight')
     plt.close()
        
 
