@@ -6,11 +6,11 @@ import seaborn as sns
 
 experiment = 'ntrials'
 model = 'ols'
-N = 200
-P = 100
+N = 100
+P = 50
 nruns = 50
 nfolds = 5
-ntested = 6
+ntested = 50
 nsignals = 3
 response_structure = 'tanh'
 
@@ -23,6 +23,8 @@ elif experiment == 'sample_size':
 elif experiment == 'ntrials':
     ntrials = [1, 5, 10, 30, 50, 100, 500, 10000]
     testers = [f'binom{x}' for x in ntrials]
+elif experiment == 'basics':
+    testers = ['Basic HRT','Basic HGT','Basic HPT','Basic Binom_CRT','Basic CPI','Invalid CPI']
 
 
 ntesters = len(testers)

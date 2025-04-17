@@ -11,11 +11,11 @@ from timings import DataGeneratingModel, fit_bayes_ridge, fit_lasso, fit_rf, fit
 
 if __name__ == '__main__':
     # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
-    N = 200
-    P = 100
+    N = 100
+    P = 50
     nruns = 50
     nfolds = 5
-    ntested = 10
+    ntested = 50
     nsignals = 3
     response_structure = 'tanh'
 
@@ -34,8 +34,8 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn =  fit_ols#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
-    model = 'ols'
+    fit_fn =  fit_xgboost#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
+    model = 'xgboost'
     testers = [f'binom{x}' for x in ntrials]
     ntesters = len(testers)
 

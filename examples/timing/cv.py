@@ -10,12 +10,12 @@ from timings import DataGeneratingModel, fit_bayes_ridge, fit_lasso, fit_rf, fit
 
 if __name__ == '__main__':
     # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
-    N = 200
-    P = 100
-    nsamples = 10000
-    ntested = 50
+    N = 100
+    P = 50
+    nsamples = 1000
+    ntested = 6
     response_structure = 'tanh'
-    nruns = 10
+    nruns = 5
     nfolds = 5
     nfactors = 5
     sigma = 1
@@ -30,8 +30,8 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn =  fit_ols#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
-    model = 'ols'
+    fit_fn =  fit_tabpfn#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
+    model = 'tabpfn'
     testers = [
                'CV-HRT', 
                'Invalid CV-HRT',
@@ -84,7 +84,7 @@ if __name__ == '__main__':
             method_idx += 1
 
             start = time.time()
-            p_values[run, signal_idx, method_idx] = invalid_cv_binom_hrt(dgm, signal_idx, fit_fn, folds=folds, ntrials=5)
+            p_values[run, signal_idx, method_idx] = invalid_cv_binom_hrt(dgm, signal_idx, fit_fn, folds=folds, ntrials=30)
             end = time.time()
             timings[run, signal_idx, method_idx] = end - start
             method_idx += 1
