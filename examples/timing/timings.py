@@ -6,7 +6,6 @@ import time
 from scipy.stats import norm, binom
 from collections import defaultdict
 
-
 # Benjamini-hochberg
 def bh(p, fdr):
     p_orders = np.argsort(p)
@@ -123,6 +122,50 @@ def fit_xgboost(X, y):
     model.fit(X, y, verbose=False)
     return model
 
+class XGBoostGPU:
+    def __init__(self, max_depth=6, learning_rate=0.1, n_estimators=100):
+        self.max_depth = max_depth
+        self.learning_rate = learning_rate
+        self.n_estimators = n_estimators
+        self.model = None
+
+    def fit(self, X, y):
+        import xgboost as xgb
+
+        """ Fit the XGBoost model on GPU """
+        # Convert input data into DMatrix, which is required for XGBoost
+        dtrain = xgb.DMatrix(X, label=y)
+        
+        # Define parameters for GPU training
+        params = {
+            'objective': 'reg:squarederror',
+            'max_depth': self.max_depth,
+            'learning_rate': self.learning_rate,
+            'tree_method': 'hist',  # Histogram-based algorithm (faster for large datasets)
+            'device': 'cuda',  # Use GPU for training
+        }
+
+        # Train the model
+        self.model = xgb.train(params, dtrain, num_boost_round=self.n_estimators)
+
+    def predict(self, X):
+        """ Predict using the trained XGBoost model """
+
+        import xgboost as xgb
+
+        # Convert test data into DMatrix
+        dtest = xgb.DMatrix(X)
+        
+        # Use the trained model to predict
+        return self.model.predict(dtest)
+
+def fit_xgboost_GPU(X, y):
+    """ Fit function for XGBoost with GPU """
+    xgb_model = XGBoostGPU()
+    xgb_model.fit(X, y)
+    return xgb_model
+
+
 def fit_fast_xgboost(X, y):
     ''' Fit a lightweight and fast XGBoost regressor '''
     import xgboost as xgb
@@ -174,10 +217,25 @@ def fit_ols(X, y):
     return ols
 
 def fit_keras_nn(X, y):
-    ''' Fit a simple neural network using Keras  '''
+    ''' Fit a simple neural network using Keras with GPU support '''
+    import numpy as np
+    import tensorflow as tf
     from tensorflow.keras.models import Sequential
     from tensorflow.keras.layers import Dense
     from tensorflow.keras.optimizers import Adam
+
+    # Check for GPU
+    gpus = tf.config.list_physical_devices('GPU')
+    if not gpus:
+        raise RuntimeError("No GPU found. Please ensure TensorFlow is configured with GPU support.")
+    
+    # Optional: Set memory growth
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print(f"Using GPU: {gpus[0].name}")
+    except RuntimeError as e:
+        print(e)
 
     X = np.asarray(X)
     y = np.asarray(y)

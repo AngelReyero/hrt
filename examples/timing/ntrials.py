@@ -34,8 +34,8 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn =  fit_xgboost#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
-    model = 'xgboost'
+    fit_fn =  fit_bayes_ridge#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
+    model = 'bayes_ridge'
     testers = [f'binom{x}' for x in ntrials]
     ntesters = len(testers)
 

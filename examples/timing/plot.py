@@ -4,15 +4,15 @@ import seaborn as sns
 
 
 
-experiment = 'ntrials'
+experiment = 'basics'
 model = 'ols'
 N = 100
 P = 50
-nruns = 50
+nruns = 10
 nfolds = 5
 ntested = 50
-nsignals = 3
-response_structure = 'tanh'
+nsignals = 20
+response_structure = 'linear'
 
 
 if experiment == 'cv':

@@ -4,7 +4,7 @@ Set of benchmarks for different holdout randomization testing algorithms.
 import numpy as np
 import time
 from scipy.stats import norm, binom
-from timings import DataGeneratingModel, fit_bayes_ridge, fit_lasso, fit_rf, fit_tabpfn, fit_xgboost, fit_ols, fit_keras_nn, create_train_test, create_folds,basic_hrt,basic_hpt, basic_binom_hrt, basic_hgt, basic_cpi, invalid_cpi
+from timings import DataGeneratingModel, fit_bayes_ridge, fit_lasso, fit_rf, fit_tabpfn, fit_xgboost, fit_ols, fit_keras_nn, fit_xgboost_GPU, create_train_test, create_folds,basic_hrt,basic_hpt, basic_binom_hrt, basic_hgt, basic_cpi, invalid_cpi
 
 
 
@@ -13,7 +13,7 @@ if __name__ == '__main__':
     # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
     N = 100
     P = 50
-    nruns = 50
+    nruns = 100
     nfolds = 5
     ntested = 50
     nsignals = 3
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn =  fit_ols#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
+    fit_fn =  fit_ols#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn, fit_xgboost_GPU]
     model = 'ols'
     testers = [#'Naive CRT', 'Naive CV-CRT',
                'Basic HRT', #'CV-HRT', #'Invalid CV-HRT',
@@ -108,7 +108,7 @@ if __name__ == '__main__':
             method_idx += 1
 
             start = time.time()
-            p_values[run, signal_idx, method_idx] = basic_binom_hrt(dgm, signal_idx, fit_fn, test_fold=folds[0], ntrials=10)
+            p_values[run, signal_idx, method_idx] = basic_binom_hrt(dgm, signal_idx, fit_fn, test_fold=folds[0], ntrials=30)
             end = time.time()
             timings[run, signal_idx, method_idx] = end - start
             method_idx += 1
@@ -126,5 +126,5 @@ if __name__ == '__main__':
             method_idx += 1
             
     flat_data = np.stack([p_values.flatten(), timings.flatten()], axis=1)
-    np.savetxt(f"csv/ntrials/N{N}_p{P}_{model}_{response_structure}_nsignal{nsignals}_ntested{ntested}_nruns{nruns}_nfolds{nfolds}.csv", flat_data, delimiter=",", header="p_value,timing", comments="")
+    np.savetxt(f"csv/basics/N{N}_p{P}_{model}_{response_structure}_nsignal{nsignals}_ntested{ntested}_nruns{nruns}_nfolds{nfolds}.csv", flat_data, delimiter=",", header="p_value,timing", comments="")
 
