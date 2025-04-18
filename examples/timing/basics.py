@@ -11,13 +11,13 @@ from timings import DataGeneratingModel, fit_bayes_ridge, fit_lasso, fit_rf, fit
 
 if __name__ == '__main__':
     # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
-    N = 100
+    N = 200
     P = 50
     nruns = 100
     nfolds = 5
     ntested = 50
-    nsignals = 3
-    response_structure = 'tanh'
+    nsignals = 20
+    response_structure = 'linear'
 
     nsamples = 10000
     nfactors = 5

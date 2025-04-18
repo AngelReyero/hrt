@@ -6,13 +6,13 @@ import seaborn as sns
 
 experiment = 'basics'
 model = 'ols'
-N = 100
+N = 200
 P = 50
-nruns = 10
+nruns = 50
 nfolds = 5
 ntested = 50
-nsignals = 20
-response_structure = 'linear'
+nsignals = 3
+response_structure = 'tanh'
 
 
 if experiment == 'cv':
