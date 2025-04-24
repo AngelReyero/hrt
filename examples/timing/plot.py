@@ -5,18 +5,18 @@ import seaborn as sns
 
 
 experiment = 'basics'
-model = 'lasso'
-N = 100
+model = 'ols'
+N = 400
 P = 50
 nruns = 100
 nfolds = 5
 ntested = 50
-nsignals = 3
-response_structure = 'tanh'
+nsignals = 20
+response_structure = 'linear'
 
 
 if experiment == 'cv':
-    testers = ['CV-HRT', 'Invalid CV-HRT','CV-CPI','Invalid CV-CPI','Invalid binom-HRT','CV-HGT','CV-HPT']
+    testers = ['CV-HRT', 'CV-HGT','CV-HPT','Invalid binom-HRT','CV-CPI','Invalid CV-CPI','Invalid CV-HRT']
 elif experiment == 'sample_size':
     test_percentage = [0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5]
     testers = [f'binom{x}' for x in test_percentage]

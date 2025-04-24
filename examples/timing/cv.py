@@ -12,10 +12,10 @@ if __name__ == '__main__':
     # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
     N = 100
     P = 50
-    nsamples = 1000
-    ntested = 6
+    nsamples = 10000
+    ntested = 50
     response_structure = 'tanh'
-    nruns = 5
+    nruns = 100
     nfolds = 5
     nfactors = 5
     sigma = 1
@@ -30,8 +30,8 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn =  fit_tabpfn#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
-    model = 'tabpfn'
+    fit_fn =  fit_ols#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn]
+    model = 'ols'
     testers = [
                'CV-HRT', 
                'Invalid CV-HRT',
