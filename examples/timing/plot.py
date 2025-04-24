@@ -5,10 +5,10 @@ import seaborn as sns
 
 
 experiment = 'basics'
-model = 'ols'
-N = 200
+model = 'lasso'
+N = 100
 P = 50
-nruns = 50
+nruns = 100
 nfolds = 5
 ntested = 50
 nsignals = 3
