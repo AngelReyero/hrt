@@ -5,7 +5,7 @@ import seaborn as sns
 
 
 experiment = 'basics'
-model = 'ols'
+model = 'lasso'
 N = 400
 P = 50
 nruns = 100

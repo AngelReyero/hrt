@@ -11,7 +11,7 @@ from timings import DataGeneratingModel, fit_bayes_ridge, fit_lasso, fit_rf, fit
 
 if __name__ == '__main__':
     # N samples, P covariates, 4 non-null, repeat nfolds indepent times, with error rate alpha
-    N = 400
+    N = 200
     P = 50
     nruns = 100
     nfolds = 5
@@ -32,8 +32,8 @@ if __name__ == '__main__':
     np.set_printoptions(precision=2, suppress=True)
 
     # Consider a few different predictive models
-    fit_fn =  fit_lasso#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn, fit_xgboost_GPU]
-    model = 'lasso'
+    fit_fn =  fit_tabpfn#[fit_ols, fit_bayes_ridge, fit_lasso, fit_rf, fit_xgboost, fit_keras_nn, fit_tabpfn, fit_xgboost_GPU]
+    model = 'tabpfn'
     testers = [#'Naive CRT', 'Naive CV-CRT',
                'Basic HRT', #'CV-HRT', #'Invalid CV-HRT',
                'Basic HGT', #'CV-HGT',
